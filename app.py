@@ -305,28 +305,71 @@ def get_data(force=False):
 app = Flask(__name__)
 
 
-# ---- Password protection (whole site) ----
-# Credentials come from environment variables so they are NOT in the public
-# repo. Set APP_USER and APP_PASSWORD in Render's Environment tab. The defaults
-# below are only a fallback for local testing — change them on Render.
+# ---- Auth: styled login page + session cookie (a few hours) ----
 import os
 import secrets
-from flask import request, Response
+from datetime import timedelta
+from flask import request, session, redirect, url_for
 
-APP_USER = os.environ.get("APP_USER", "admin")
-APP_PASSWORD = os.environ.get("APP_PASSWORD", "changeme")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "changeme")   # kept for backward compat
+app.secret_key = os.environ.get("SECRET_KEY", "dev-only-change-me")
+app.permanent_session_lifetime = timedelta(hours=4)
+
+
+def load_users():
+    """
+    Users come from the APP_USERS env var as comma-separated user:password pairs,
+    e.g.  rens:pw1,sander:pw2,emma:pw3
+    Falls back to the older APP_USER/APP_PASSWORD single login if APP_USERS isn't set.
+    """
+    raw = os.environ.get("APP_USERS", "").strip()
+    users = {}
+    if raw:
+        for pair in raw.split(","):
+            if ":" in pair:
+                u, pw = pair.split(":", 1)
+                if u.strip():
+                    users[u.strip()] = pw.strip()
+    if not users:   # fallback to single-user vars
+        users[os.environ.get("APP_USER", "admin")] = APP_PASSWORD
+    return users
+
+
+USERS = load_users()
 
 
 @app.before_request
-def require_login():
-    auth = request.authorization
-    ok = auth and secrets.compare_digest(auth.username or "", APP_USER) \
-              and secrets.compare_digest(auth.password or "", APP_PASSWORD)
-    if not ok:
-        return Response(
-            "Login required.", 401,
-            {"WWW-Authenticate": 'Basic realm="Market Screen"'}
-        )
+def gate():
+    p = request.path
+    if p == "/login" or p.startswith("/static"):
+        return
+    if session.get("auth"):
+        return
+    if p.startswith("/api/"):
+        return ("auth required", 401)   # JS handles this by sending you to /login
+    return redirect(url_for("login"))
+
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    error = None
+    if request.method == "POST":
+        u = request.form.get("username", "")
+        pw = request.form.get("password", "")
+        expected = USERS.get(u)
+        if expected is not None and secrets.compare_digest(pw, expected):
+            session.permanent = True
+            session["auth"] = True
+            session["user"] = u
+            return redirect(url_for("index"))
+        error = "Invalid username or password."
+    return render_template("login.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
 
 
 @app.route("/")

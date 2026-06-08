@@ -250,6 +250,7 @@ def build_data():
             datasets.append({
                 "name": inv.get(s, s),
                 "data": [clean(v) for v in idx.tolist()],
+                "raw": [clean(v) for v in col.tolist()],
             })
         if datasets:
             series_by_market[market_name] = {"labels": labels, "datasets": datasets}

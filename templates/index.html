@@ -224,7 +224,10 @@ function render(){
   if(ui.fund===null)   ui.fund   = FUND_METRICS[0];
   const s = DATA.screen;
   const buys = s.filter(r=>r.Signal==='BUY').length;
-  const newLows = s.filter(r=>r['% Above 1Y Low']!=null && r['% Above 1Y Low']<=0.5).length;
+  const nearLowList = s.filter(r=>r['% Above 1Y Low']!=null && r['% Above 1Y Low']<=0.5)
+                       .sort((a,b)=>a['% Above 1Y Low']-b['% Above 1Y Low']);
+  const newLows = nearLowList.length;
+  const nearLowNames = newLows ? nearLowList.map(r=>r.Name).join(', ') : 'none';
   const moves = s.filter(r=>r['Daily Move (%)']!=null);
   const gainer = moves.slice().sort((a,b)=>b['Daily Move (%)']-a['Daily Move (%)'])[0];
   const decliner = moves.slice().sort((a,b)=>a['Daily Move (%)']-b['Daily Move (%)'])[0];
@@ -236,7 +239,7 @@ function render(){
       <div class="card"><div class="k">Buy signals</div><div class="v pos">${buys}</div><div class="sub">12-1 momentum &gt; 0</div></div>
       <div class="card"><div class="k">Top gainer today</div><div class="v pos">${gainer?F.pct(gainer['Daily Move (%)']):'—'}</div><div class="sub">${gainer?gainer.Name:''}</div></div>
       <div class="card"><div class="k">Top decliner today</div><div class="v neg">${decliner?F.pct(decliner['Daily Move (%)']):'—'}</div><div class="sub">${decliner?decliner.Name:''}</div></div>
-      <div class="card"><div class="k">Near 1Y low</div><div class="v ${newLows?'neg':''}">${newLows}</div><div class="sub">within 0.5% of 1Y low</div></div>
+      <div class="card"><div class="k">Near 1Y low</div><div class="v ${newLows?'neg':''}">${newLows}</div><div class="sub">${nearLowNames}</div></div>
       <div class="card"><div class="k">Most below 1Y high</div><div class="v neg">${beaten?F.pct(beaten['% Below 1Y High']):'—'}</div><div class="sub">${beaten?beaten.Name:''}</div></div>
     </div>
 

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Screen — Sign in</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0c0e12; --panel:#14171d; --panel-2:#1a1e26; --line:#262b35;
+    --txt:#e6e9ef; --muted:#8a93a3; --faint:#5b6472;
+    --red:#f87272; --accent:#FBD23C;
+    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--txt); font-family:var(--sans);
+    min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background-image:radial-gradient(circle at 50% -10%, #161b24 0%, transparent 55%);
+    padding:24px;
+  }
+  .card{
+    background:var(--panel); border:1px solid var(--line); border-radius:12px;
+    padding:34px 32px; width:100%; max-width:380px;
+  }
+  .brand{font-size:22px; font-weight:700; letter-spacing:-0.3px; margin-bottom:4px}
+  .brand span{color:var(--accent)}
+  .sub{font-family:var(--mono); font-size:11px; text-transform:uppercase;
+    letter-spacing:1px; color:var(--muted); margin-bottom:24px}
+  label{display:block; font-family:var(--mono); font-size:10px; text-transform:uppercase;
+    letter-spacing:.8px; color:var(--muted); margin:14px 0 6px}
+  input{
+    width:100%; font-family:var(--mono); font-size:14px; background:var(--panel-2);
+    color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:11px 12px;
+    outline:none;
+  }
+  input:focus{border-color:var(--accent)}
+  button{
+    width:100%; margin-top:22px; font-family:var(--mono); font-size:12px;
+    letter-spacing:.5px; text-transform:uppercase; color:var(--bg);
+    background:var(--accent); border:0; padding:12px; border-radius:6px;
+    cursor:pointer; font-weight:600; transition:opacity .15s;
+  }
+  button:hover{opacity:.88}
+  .err{
+    background:#3d1f23; color:var(--red); font-size:12px; border-radius:6px;
+    padding:10px 12px; margin-top:18px; font-family:var(--mono);
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="brand">MARKET<span>·</span>SCREEN</div>
+    <div class="sub">Sign in to continue</div>
+    <form method="post">
+      <label for="username">Username</label>
+      <input id="username" name="username" autocomplete="username" autofocus>
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" autocomplete="current-password">
+      <button type="submit">Sign in</button>
+    </form>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  </div>
+</body>
+</html>

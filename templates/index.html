@@ -119,9 +119,12 @@
   <header>
     <div class="brand">
       <h1>MARKET<span>·</span>SCREEN</h1>
-      <span class="stamp">updated <b id="stamp">—</b></span>
+      <span class="stamp">updated <b id="stamp">—</b> <span id="ago"></span></span>
     </div>
-    <button class="refresh" id="refreshBtn">Refresh data</button>
+    <div style="display:flex; gap:10px; align-items:center">
+      <button class="refresh" id="autoBtn" style="background:var(--panel-2); color:var(--accent); border:1px solid var(--line)">Auto: ON</button>
+      <button class="refresh" id="refreshBtn">Refresh data</button>
+    </div>
   </header>
   <div id="app">
     <div class="loading pulse">Fetching market data… first load pulls fundamentals and can take a minute.</div>
@@ -136,6 +139,20 @@ const F = {
 };
 
 let DATA=null, sortKey='Momentum 12-1 (%)', sortDir=-1, table='screen', lineMode='idx';
+let ui={series:null, fund:null, search:'', mkt:''};   // preserved across auto-refreshes
+let lastStamp=null, autoOn=true, autoTimer=null, lastTs=null;
+
+function fmtLocal(ts){
+  const d=new Date(ts*1000);
+  return d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+function fmtAgo(ts){
+  let s=Math.max(0,Math.round(Date.now()/1000-ts));
+  if(s<60) return '('+s+'s ago)';
+  const m=Math.floor(s/60); return '('+m+'m '+(s%60)+'s ago)';
+}
+function tickAgo(){ if(lastTs!=null) document.getElementById('ago').textContent=fmtAgo(lastTs); }
+setInterval(tickAgo, 1000);
 
 const SCREEN_COLS = [
   {k:'Name', lbl:'Name', lft:true, render:r=>`<span class="name">${r.Name}</span> <span class="tick">${r.Ticker}</span><br><span class="mkt">${r.Market}</span>`},
@@ -181,8 +198,14 @@ async function load(force){
   if(force){btn.disabled=true; btn.textContent='Refreshing…';}
   try{
     const res = force ? await fetch('/api/refresh',{method:'POST'}) : await fetch('/api/data');
-    DATA = await res.json();
-    render();
+    const incoming = await res.json();
+    const changed = !lastStamp || incoming.generated_ts !== lastStamp;
+    DATA = incoming;
+    lastStamp = incoming.generated_ts;
+    // don't yank the page out from under the user mid-typing
+    const typing = document.activeElement && document.activeElement.id === 'search';
+    if(force || (changed && !typing)) render();
+    else { lastTs = DATA.generated_ts; tickAgo(); }
   }catch(e){
     document.getElementById('app').innerHTML =
       `<div class="loading">Failed to load: ${e}. Is the Flask server running?</div>`;
@@ -192,7 +215,11 @@ async function load(force){
 }
 
 function render(){
-  document.getElementById('stamp').textContent = DATA.generated_at;
+  lastTs = DATA.generated_ts;
+  document.getElementById('stamp').textContent = fmtLocal(DATA.generated_ts);
+  tickAgo();
+  if(ui.series===null) ui.series = DATA.markets[0];
+  if(ui.fund===null)   ui.fund   = FUND_METRICS[0];
   const s = DATA.screen;
   const buys = s.filter(r=>r.Signal==='BUY').length;
   const newLows = s.filter(r=>r['% Above 1Y Low']!=null && r['% Above 1Y Low']<=0.5).length;
@@ -229,17 +256,10 @@ function render(){
             <button data-m="idx" class="${lineMode==='idx'?'on':''}">Indexed</button>
             <button data-m="raw" class="${lineMode==='raw'?'on':''}">Raw price</button>
           </span>
-          <select id="seriesSel">${DATA.markets.map(m=>`<option>${m}</option>`).join('')}</select>
+          <select id="seriesSel">${DATA.markets.map(m=>`<option ${ui.series===m?'selected':''}>${m}</option>`).join('')}</select>
         </span>
       </h2>
       <div class="chart-box" style="height:340px"><canvas id="lineChart"></canvas></div>
-    </div>
-
-    <div class="panel" style="margin-bottom:16px">
-      <h2>Fundamentals — ranked
-        <select id="fundMetric">${FUND_METRICS.map(m=>`<option>${m}</option>`).join('')}</select>
-      </h2>
-      <div class="chart-box" style="height:360px"><canvas id="fundChart"></canvas></div>
     </div>
 
     <div class="controls">
@@ -247,14 +267,21 @@ function render(){
         <button data-t="screen" class="${table==='screen'?'on':''}">Screen</button>
         <button data-t="fund" class="${table==='fund'?'on':''}">Fundamentals</button>
       </div>
-      <input id="search" placeholder="Filter name / ticker…">
+      <input id="search" placeholder="Filter name / ticker…" value="${ui.search}">
       <select id="mktFilter">
         <option value="">All markets</option>
-        ${DATA.markets.map(m=>`<option>${m}</option>`).join('')}
+        ${DATA.markets.map(m=>`<option ${ui.mkt===m?'selected':''}>${m}</option>`).join('')}
       </select>
       <span class="count" id="count"></span>
     </div>
     <div class="tablewrap"><table id="tbl"></table></div>
+
+    <div class="panel" style="margin-top:16px">
+      <h2>Fundamentals — ranked
+        <select id="fundMetric">${FUND_METRICS.map(m=>`<option ${ui.fund===m?'selected':''}>${m}</option>`).join('')}</select>
+      </h2>
+      <div class="chart-box" style="height:360px"><canvas id="fundChart"></canvas></div>
+    </div>
   `;
 
   // wire controls
@@ -268,10 +295,10 @@ function render(){
     document.querySelectorAll('#lineModeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.m===lineMode));
     drawLine(document.getElementById('seriesSel').value);
   });
-  document.getElementById('search').oninput = drawTable;
-  document.getElementById('mktFilter').onchange = drawTable;
-  document.getElementById('seriesSel').onchange = e=>drawLine(e.target.value);
-  document.getElementById('fundMetric').onchange = e=>drawFund(e.target.value);
+  document.getElementById('search').oninput = e=>{ui.search=e.target.value; drawTable();};
+  document.getElementById('mktFilter').onchange = e=>{ui.mkt=e.target.value; drawTable();};
+  document.getElementById('seriesSel').onchange = e=>{ui.series=e.target.value; drawLine(e.target.value);};
+  document.getElementById('fundMetric').onchange = e=>{ui.fund=e.target.value; drawFund(e.target.value);};
 
   drawCharts();
   drawTable();
@@ -374,7 +401,18 @@ function drawTable(){
 }
 
 document.getElementById('refreshBtn').onclick=()=>load(true);
+
+function startAuto(){ stopAuto(); autoTimer=setInterval(()=>load(false), 60000); }
+function stopAuto(){ if(autoTimer){clearInterval(autoTimer); autoTimer=null;} }
+document.getElementById('autoBtn').onclick=function(){
+  autoOn=!autoOn;
+  this.textContent='Auto: '+(autoOn?'ON':'OFF');
+  this.style.color = autoOn ? 'var(--accent)' : 'var(--faint)';
+  if(autoOn) startAuto(); else stopAuto();
+};
+
 load(false);
+startAuto();
 </script>
 </body>
 </html>

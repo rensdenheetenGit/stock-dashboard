@@ -124,6 +124,7 @@
     <div style="display:flex; gap:10px; align-items:center">
       <button class="refresh" id="autoBtn" style="background:var(--panel-2); color:var(--accent); border:1px solid var(--line)">Auto: ON</button>
       <button class="refresh" id="refreshBtn">Refresh data</button>
+      <a href="/logout" class="refresh" style="background:var(--panel-2); color:var(--faint); border:1px solid var(--line); text-decoration:none; display:inline-flex; align-items:center">Log out</a>
     </div>
   </header>
   <div id="app">
@@ -198,6 +199,7 @@ async function load(force){
   if(force){btn.disabled=true; btn.textContent='Refreshing…';}
   try{
     const res = force ? await fetch('/api/refresh',{method:'POST'}) : await fetch('/api/data');
+    if(res.status===401){ window.location.href='/login'; return; }
     const incoming = await res.json();
     const changed = !lastStamp || incoming.generated_ts !== lastStamp;
     DATA = incoming;

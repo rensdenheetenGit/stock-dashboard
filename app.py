@@ -15,6 +15,7 @@ Then open http://localhost:5000
 import time
 import threading
 import math
+import gc
 
 import yfinance as yf
 import pandas as pd
@@ -137,7 +138,7 @@ def mom_date(prices, lookback_years=1, skip_days=21):
 
 
 # ----------------------------------------------------------------------
-# Core build (this is the expensive part — cached)
+# Core build (this is the expensive part - cached)
 # ----------------------------------------------------------------------
 def build_data():
     tickers, market_lookup = {}, {}
@@ -148,10 +149,13 @@ def build_data():
     symbols = list(dict.fromkeys(tickers.values()))
     inv = {v: k for k, v in tickers.items()}
 
-    data = yf.download(symbols, period="10y", interval="1d",
+    # 5y is plenty for the 1Y/5Y windows and momentum; lighter on memory than 10y.
+    data = yf.download(symbols, period="5y", interval="1d",
                        auto_adjust=False, group_by="column", progress=False)
-    close = data["Close"].ffill().dropna(how="all")
-    adj_close = data["Adj Close"].ffill().dropna(how="all")
+    close = data["Close"].ffill().dropna(how="all").copy()
+    adj_close = data["Adj Close"].ffill().dropna(how="all").copy()
+    del data                       # free the full OHLCV frame
+    gc.collect()
 
     # currency + fundamentals (one Ticker call per symbol)
     currencies, fundamentals = {}, {}

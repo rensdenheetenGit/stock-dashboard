@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Market Screen</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#0c0e12; --panel:#14171d; --panel-2:#1a1e26; --line:#262b35;
+    --txt:#e6e9ef; --muted:#8a93a3; --faint:#5b6472;
+    --green:#36d399; --green-dim:#1c3d33;
+    --red:#f87272; --red-dim:#3d1f23;
+    --amber:#fbbf24; --blue:#60a5fa; --accent:#FBD23C;
+    --mono:'IBM Plex Mono',monospace; --sans:'IBM Plex Sans',sans-serif;
+  }
+  *{box-sizing:border-box; margin:0; padding:0}
+  body{
+    background:var(--bg); color:var(--txt); font-family:var(--sans);
+    font-size:13px; line-height:1.4;
+    background-image:radial-gradient(circle at 20% -10%, #161b24 0%, transparent 45%);
+    min-height:100vh; padding:0 0 60px;
+  }
+  .wrap{max-width:1500px; margin:0 auto; padding:0 24px}
+
+  header{
+    display:flex; align-items:baseline; justify-content:space-between;
+    gap:16px; padding:24px 0 18px; border-bottom:1px solid var(--line);
+    flex-wrap:wrap; margin-bottom:22px;
+  }
+  .brand{display:flex; align-items:baseline; gap:14px}
+  .brand h1{font-size:20px; font-weight:700; letter-spacing:-0.3px}
+  .brand h1 span{color:var(--accent)}
+  .stamp{font-family:var(--mono); font-size:11px; color:var(--faint)}
+  .stamp b{color:var(--muted); font-weight:500}
+  button.refresh{
+    font-family:var(--mono); font-size:11px; letter-spacing:.5px;
+    text-transform:uppercase; color:var(--bg); background:var(--accent);
+    border:0; padding:8px 16px; border-radius:5px; cursor:pointer;
+    font-weight:600; transition:opacity .15s;
+  }
+  button.refresh:hover{opacity:.85}
+  button.refresh:disabled{opacity:.4; cursor:wait}
+
+  .cards{
+    display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr));
+    gap:12px; margin-bottom:24px;
+  }
+  .card{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px 16px}
+  .card .k{font-family:var(--mono); font-size:10px; text-transform:uppercase;
+    letter-spacing:.8px; color:var(--muted); margin-bottom:8px}
+  .card .v{font-family:var(--mono); font-size:24px; font-weight:600; letter-spacing:-.5px}
+  .card .sub{font-size:11px; color:var(--faint); margin-top:3px}
+
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:16px}
+  @media(max-width:980px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px 18px}
+  .panel h2{
+    font-family:var(--mono); font-size:11px; text-transform:uppercase;
+    letter-spacing:1px; color:var(--muted); font-weight:500;
+    margin-bottom:14px; display:flex; justify-content:space-between;
+    align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  .panel h2 .ctrls{display:flex; gap:8px; align-items:center}
+  .panel h2 select{
+    font-family:var(--mono); font-size:11px; background:var(--panel-2);
+    color:var(--txt); border:1px solid var(--line); border-radius:4px;
+    padding:4px 8px; cursor:pointer;
+  }
+  .chart-box{position:relative; height:300px}
+
+  .seg{display:flex; border:1px solid var(--line); border-radius:5px; overflow:hidden}
+  .seg button{
+    font-family:var(--mono); font-size:11px; background:var(--panel);
+    color:var(--muted); border:0; padding:6px 12px; cursor:pointer;
+  }
+  .seg button.on{background:var(--panel-2); color:var(--accent)}
+
+  .controls{display:flex; gap:10px; align-items:center; margin-bottom:12px; flex-wrap:wrap}
+  .controls input, .controls select{
+    font-family:var(--mono); font-size:12px; background:var(--panel);
+    color:var(--txt); border:1px solid var(--line); border-radius:5px; padding:8px 11px;
+  }
+  .controls input{min-width:200px}
+  .controls input::placeholder{color:var(--faint)}
+  .controls .seg button{padding:8px 14px}
+  .count{margin-left:auto; font-family:var(--mono); font-size:11px; color:var(--faint)}
+
+  .tablewrap{background:var(--panel); border:1px solid var(--line); border-radius:8px; overflow:auto; max-height:70vh}
+  table{border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12px}
+  thead th{
+    position:sticky; top:0; background:var(--panel-2); color:var(--muted);
+    font-weight:500; text-align:right; padding:10px 12px; white-space:nowrap;
+    border-bottom:1px solid var(--line); cursor:pointer; user-select:none;
+    font-size:10.5px; text-transform:uppercase; letter-spacing:.4px; z-index:2;
+  }
+  thead th:first-child, thead th.lft{text-align:left}
+  thead th:hover{color:var(--txt)}
+  thead th .arr{color:var(--accent); margin-left:3px}
+  tbody td{padding:8px 12px; text-align:right; white-space:nowrap; border-bottom:1px solid #1c2027}
+  tbody td.lft{text-align:left}
+  tbody tr:hover{background:var(--panel-2)}
+  .name{color:var(--txt); font-weight:500; font-family:var(--sans)}
+  .tick{color:var(--faint); font-size:11px}
+  .mkt{color:var(--muted); font-size:10.5px}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  .badge{display:inline-block; font-size:10px; padding:2px 8px; border-radius:3px; font-weight:600; letter-spacing:.5px}
+  .badge.BUY{background:var(--green-dim); color:var(--green)}
+  .badge.FLAT{background:#23262e; color:var(--faint)}
+  .loading{padding:80px; text-align:center; color:var(--muted); font-family:var(--mono)}
+  .pulse{animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brand">
+      <h1>MARKET<span>·</span>SCREEN</h1>
+      <span class="stamp">updated <b id="stamp">—</b></span>
+    </div>
+    <button class="refresh" id="refreshBtn">Refresh data</button>
+  </header>
+  <div id="app">
+    <div class="loading pulse">Fetching market data… first load pulls fundamentals and can take a minute.</div>
+  </div>
+</div>
+
+<script>
+const F = {
+  pct: v => v==null ? '—' : (v>0?'+':'')+v.toFixed(2)+'%',
+  num: v => v==null ? '—' : v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2}),
+  cls: v => v==null ? '' : (v>0?'pos':v<0?'neg':''),
+};
+
+let DATA=null, sortKey='Momentum 12-1 (%)', sortDir=-1, table='screen', lineMode='idx';
+
+const SCREEN_COLS = [
+  {k:'Name', lbl:'Name', lft:true, render:r=>`<span class="name">${r.Name}</span> <span class="tick">${r.Ticker}</span><br><span class="mkt">${r.Market}</span>`},
+  {k:'Price', lbl:'Price', render:r=>`${F.num(r.Price)} <span class="tick">${r.Currency}</span>`},
+  {k:'Daily Move (%)', lbl:'Day', render:r=>`<span class="${F.cls(r['Daily Move (%)'])}">${F.pct(r['Daily Move (%)'])}</span>`},
+  {k:'Momentum 12-1 (%)', lbl:'Mom 12-1', render:r=>`<span class="${F.cls(r['Momentum 12-1 (%)'])}">${F.pct(r['Momentum 12-1 (%)'])}</span>`},
+  {k:'Signal', lbl:'Signal', render:r=>`<span class="badge ${r.Signal}">${r.Signal}</span>`},
+  {k:'% Below 1Y High', lbl:'vs 1Y Hi', render:r=>`<span class="${F.cls(r['% Below 1Y High'])}">${F.pct(r['% Below 1Y High'])}</span>`},
+  {k:'% Above 1Y Low', lbl:'vs 1Y Lo', render:r=>`<span class="${F.cls(r['% Above 1Y Low'])}">${F.pct(r['% Above 1Y Low'])}</span>`},
+  {k:'% Below 5Y High', lbl:'vs 5Y Hi', render:r=>`<span class="${F.cls(r['% Below 5Y High'])}">${F.pct(r['% Below 5Y High'])}</span>`},
+  {k:'% Below 10Y High', lbl:'vs 10Y Hi', render:r=>`<span class="${F.cls(r['% Below 10Y High'])}">${F.pct(r['% Below 10Y High'])}</span>`},
+];
+
+const FUND_COLS = [
+  {k:'Name', lbl:'Name', lft:true, render:r=>`<span class="name">${r.Name}</span> <span class="tick">${r.Ticker}</span><br><span class="mkt">${r.Market}</span>`},
+  {k:'Market Cap (M)', lbl:'Mkt Cap (M)', render:r=>`${F.num(r['Market Cap (M)'])} <span class="tick">${r.Currency}</span>`},
+  {k:'Revenue TTM (M)', lbl:'Rev TTM (M)', render:r=>F.num(r['Revenue TTM (M)'])},
+  {k:'P/E (TTM)', lbl:'P/E', render:r=>F.num(r['P/E (TTM)'])},
+  {k:'P/E (Fwd)', lbl:'P/E Fwd', render:r=>F.num(r['P/E (Fwd)'])},
+  {k:'EPS (TTM)', lbl:'EPS', render:r=>F.num(r['EPS (TTM)'])},
+  {k:'P/B', lbl:'P/B', render:r=>F.num(r['P/B'])},
+  {k:'Net Margin %', lbl:'Net Mgn', render:r=>`<span class="${F.cls(r['Net Margin %'])}">${F.pct(r['Net Margin %'])}</span>`},
+  {k:'ROE %', lbl:'ROE', render:r=>`<span class="${F.cls(r['ROE %'])}">${F.pct(r['ROE %'])}</span>`},
+  {k:'Rev Growth %', lbl:'Rev Grw', render:r=>`<span class="${F.cls(r['Rev Growth %'])}">${F.pct(r['Rev Growth %'])}</span>`},
+  {k:'Div Yield %', lbl:'Div Yld', render:r=>F.pct(r['Div Yield %'])},
+];
+
+// metrics offered in the fundamentals chart selector
+const FUND_METRICS = ['P/E (TTM)','P/E (Fwd)','P/B','EPS (TTM)','Net Margin %','ROE %','Rev Growth %','EPS Growth %','Div Yield %','Market Cap (M)','Revenue TTM (M)'];
+
+const CHART_DEFAULTS = {
+  responsive:true, maintainAspectRatio:false,
+  plugins:{legend:{display:false}},
+  scales:{
+    x:{ticks:{color:'#5b6472',font:{family:'IBM Plex Mono',size:10}},grid:{color:'#1c2027'}},
+    y:{ticks:{color:'#5b6472',font:{family:'IBM Plex Mono',size:10}},grid:{color:'#1c2027'}},
+  }
+};
+let charts={};
+
+async function load(force){
+  const btn=document.getElementById('refreshBtn');
+  if(force){btn.disabled=true; btn.textContent='Refreshing…';}
+  try{
+    const res = force ? await fetch('/api/refresh',{method:'POST'}) : await fetch('/api/data');
+    DATA = await res.json();
+    render();
+  }catch(e){
+    document.getElementById('app').innerHTML =
+      `<div class="loading">Failed to load: ${e}. Is the Flask server running?</div>`;
+  }finally{
+    btn.disabled=false; btn.textContent='Refresh data';
+  }
+}
+
+function render(){
+  document.getElementById('stamp').textContent = DATA.generated_at;
+  const s = DATA.screen;
+  const buys = s.filter(r=>r.Signal==='BUY').length;
+  const newLows = s.filter(r=>r['% Above 1Y Low']!=null && r['% Above 1Y Low']<=0.5).length;
+  const moves = s.filter(r=>r['Daily Move (%)']!=null);
+  const gainer = moves.slice().sort((a,b)=>b['Daily Move (%)']-a['Daily Move (%)'])[0];
+  const decliner = moves.slice().sort((a,b)=>a['Daily Move (%)']-b['Daily Move (%)'])[0];
+  const beaten = s.filter(r=>r['% Below 1Y High']!=null).slice().sort((a,b)=>a['% Below 1Y High']-b['% Below 1Y High'])[0];
+
+  document.getElementById('app').innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="k">Instruments</div><div class="v">${s.length}</div><div class="sub">across ${DATA.markets.length} markets</div></div>
+      <div class="card"><div class="k">Buy signals</div><div class="v pos">${buys}</div><div class="sub">12-1 momentum &gt; 0</div></div>
+      <div class="card"><div class="k">Top gainer today</div><div class="v pos">${gainer?F.pct(gainer['Daily Move (%)']):'—'}</div><div class="sub">${gainer?gainer.Name:''}</div></div>
+      <div class="card"><div class="k">Top decliner today</div><div class="v neg">${decliner?F.pct(decliner['Daily Move (%)']):'—'}</div><div class="sub">${decliner?decliner.Name:''}</div></div>
+      <div class="card"><div class="k">Near 1Y low</div><div class="v ${newLows?'neg':''}">${newLows}</div><div class="sub">within 0.5% of 1Y low</div></div>
+      <div class="card"><div class="k">Most below 1Y high</div><div class="v neg">${beaten?F.pct(beaten['% Below 1Y High']):'—'}</div><div class="sub">${beaten?beaten.Name:''}</div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>12-1 Momentum — ranked</h2>
+        <div class="chart-box"><canvas id="momChart"></canvas></div>
+      </div>
+      <div class="panel">
+        <h2>Distance below 1Y high</h2>
+        <div class="chart-box"><canvas id="highChart"></canvas></div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2><span id="lineTitle">Indexed performance (start = 100)</span>
+        <span class="ctrls">
+          <span class="seg" id="lineModeSeg">
+            <button data-m="idx" class="${lineMode==='idx'?'on':''}">Indexed</button>
+            <button data-m="raw" class="${lineMode==='raw'?'on':''}">Raw price</button>
+          </span>
+          <select id="seriesSel">${DATA.markets.map(m=>`<option>${m}</option>`).join('')}</select>
+        </span>
+      </h2>
+      <div class="chart-box" style="height:340px"><canvas id="lineChart"></canvas></div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Fundamentals — ranked
+        <select id="fundMetric">${FUND_METRICS.map(m=>`<option>${m}</option>`).join('')}</select>
+      </h2>
+      <div class="chart-box" style="height:360px"><canvas id="fundChart"></canvas></div>
+    </div>
+
+    <div class="controls">
+      <div class="seg">
+        <button data-t="screen" class="${table==='screen'?'on':''}">Screen</button>
+        <button data-t="fund" class="${table==='fund'?'on':''}">Fundamentals</button>
+      </div>
+      <input id="search" placeholder="Filter name / ticker…">
+      <select id="mktFilter">
+        <option value="">All markets</option>
+        ${DATA.markets.map(m=>`<option>${m}</option>`).join('')}
+      </select>
+      <span class="count" id="count"></span>
+    </div>
+    <div class="tablewrap"><table id="tbl"></table></div>
+  `;
+
+  // wire controls
+  document.querySelectorAll('.controls .seg button').forEach(b=>b.onclick=()=>{
+    table=b.dataset.t;
+    sortKey = table==='screen' ? 'Momentum 12-1 (%)' : 'Market Cap (M)';
+    sortDir = -1; render();
+  });
+  document.querySelectorAll('#lineModeSeg button').forEach(b=>b.onclick=()=>{
+    lineMode=b.dataset.m;
+    document.querySelectorAll('#lineModeSeg button').forEach(x=>x.classList.toggle('on',x.dataset.m===lineMode));
+    drawLine(document.getElementById('seriesSel').value);
+  });
+  document.getElementById('search').oninput = drawTable;
+  document.getElementById('mktFilter').onchange = drawTable;
+  document.getElementById('seriesSel').onchange = e=>drawLine(e.target.value);
+  document.getElementById('fundMetric').onchange = e=>drawFund(e.target.value);
+
+  drawCharts();
+  drawTable();
+}
+
+function drawCharts(){
+  const s = DATA.screen.filter(r=>r['Momentum 12-1 (%)']!=null)
+                       .slice().sort((a,b)=>b['Momentum 12-1 (%)']-a['Momentum 12-1 (%)']);
+  mkBar('momChart','mom', s.map(r=>r.Name), s.map(r=>r['Momentum 12-1 (%)']));
+
+  const h = DATA.screen.filter(r=>r['% Below 1Y High']!=null)
+                       .slice().sort((a,b)=>a['% Below 1Y High']-b['% Below 1Y High']);
+  mkBar('highChart','high', h.map(r=>r.Name), h.map(r=>r['% Below 1Y High']));
+
+  drawLine(document.getElementById('seriesSel').value);
+  drawFund(document.getElementById('fundMetric').value);
+}
+
+function mkBar(id,key,labels,vals){
+  if(charts[key]) charts[key].destroy();
+  const horiz = labels.length>14;
+  charts[key]=new Chart(document.getElementById(id),{
+    type:'bar',
+    data:{labels,datasets:[{data:vals,
+      backgroundColor:vals.map(v=>v>=0?'#36d399':'#f87272'), borderRadius:2}]},
+    options:{...CHART_DEFAULTS,
+      indexAxis: horiz?'y':'x',
+      scales:{...CHART_DEFAULTS.scales,
+        ...(horiz?{y:{...CHART_DEFAULTS.scales.y,ticks:{color:'#8a93a3',font:{family:'IBM Plex Mono',size:9}}}}:{})}
+    }
+  });
+}
+
+function drawFund(metric){
+  const rows = DATA.fundamentals.filter(r=>r[metric]!=null)
+                    .slice().sort((a,b)=>b[metric]-a[metric]);
+  mkBar('fundChart','fund', rows.map(r=>r.Name), rows.map(r=>r[metric]));
+}
+
+const LINE_COLORS=['#FBD23C','#60a5fa','#36d399','#f87272','#c084fc','#fb923c','#34d399','#f472b6','#a3e635','#22d3ee','#fbbf24','#818cf8'];
+function drawLine(market){
+  const s = DATA.series_by_market[market];
+  const raw = lineMode==='raw';
+  document.getElementById('lineTitle').textContent =
+    raw ? 'Raw price (local currency)' : 'Indexed performance (start = 100)';
+  if(charts.line) charts.line.destroy();
+  if(!s) return;
+  charts.line=new Chart(document.getElementById('lineChart'),{
+    type:'line',
+    data:{labels:s.labels, datasets:s.datasets.map((d,i)=>({
+      label:d.name, data: raw ? d.raw : d.data,
+      borderColor:LINE_COLORS[i%LINE_COLORS.length],
+      borderWidth:1.5, pointRadius:0, tension:.15, spanGaps:true,
+    }))},
+    options:{...CHART_DEFAULTS,
+      plugins:{legend:{display:true, position:'bottom',
+        labels:{color:'#8a93a3',font:{family:'IBM Plex Mono',size:10},boxWidth:10,padding:8}}},
+      scales:{...CHART_DEFAULTS.scales,
+        x:{...CHART_DEFAULTS.scales.x, ticks:{...CHART_DEFAULTS.scales.x.ticks, maxTicksLimit:8}}}
+    }
+  });
+}
+
+function drawTable(){
+  const cols = table==='screen'?SCREEN_COLS:FUND_COLS;
+  const rows = table==='screen'?DATA.screen:DATA.fundamentals;
+  const q = (document.getElementById('search').value||'').toLowerCase();
+  const mkt = document.getElementById('mktFilter').value;
+
+  let filtered = rows.filter(r=>{
+    const okQ = !q || r.Name.toLowerCase().includes(q) || r.Ticker.toLowerCase().includes(q);
+    const okM = !mkt || r.Market===mkt;
+    return okQ && okM;
+  });
+
+  filtered.sort((a,b)=>{
+    let x=a[sortKey], y=b[sortKey];
+    if(x==null) return 1; if(y==null) return -1;
+    if(typeof x==='string') return sortDir*x.localeCompare(y);
+    return sortDir*(x-y);
+  });
+
+  document.getElementById('count').textContent = `${filtered.length} rows`;
+
+  const head = `<thead><tr>${cols.map(c=>{
+    const arr = sortKey===c.k ? `<span class="arr">${sortDir<0?'▾':'▴'}</span>` : '';
+    return `<th class="${c.lft?'lft':''}" data-k="${c.k}">${c.lbl}${arr}</th>`;
+  }).join('')}</tr></thead>`;
+
+  const body = `<tbody>${filtered.map(r=>`<tr>${cols.map(c=>
+    `<td class="${c.lft?'lft':''}">${c.render(r)}</td>`).join('')}</tr>`).join('')}</tbody>`;
+
+  const tbl=document.getElementById('tbl');
+  tbl.innerHTML = head+body;
+  tbl.querySelectorAll('th').forEach(th=>th.onclick=()=>{
+    const k=th.dataset.k;
+    if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=-1;}
+    drawTable();
+  });
+}
+
+document.getElementById('refreshBtn').onclick=()=>load(true);
+load(false);
+</script>
+</body>
+</html>

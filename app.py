@@ -305,6 +305,30 @@ def get_data(force=False):
 app = Flask(__name__)
 
 
+# ---- Password protection (whole site) ----
+# Credentials come from environment variables so they are NOT in the public
+# repo. Set APP_USER and APP_PASSWORD in Render's Environment tab. The defaults
+# below are only a fallback for local testing — change them on Render.
+import os
+import secrets
+from flask import request, Response
+
+APP_USER = os.environ.get("APP_USER", "admin")
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "changeme")
+
+
+@app.before_request
+def require_login():
+    auth = request.authorization
+    ok = auth and secrets.compare_digest(auth.username or "", APP_USER) \
+              and secrets.compare_digest(auth.password or "", APP_PASSWORD)
+    if not ok:
+        return Response(
+            "Login required.", 401,
+            {"WWW-Authenticate": 'Basic realm="Market Screen"'}
+        )
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -321,6 +345,5 @@ def api_refresh():
 
 
 if __name__ == "__main__":
-    import os
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True)

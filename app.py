@@ -2,9 +2,9 @@
 """
 Stock dashboard backend.
 
-Runs the investment-screen / fundamentals logic and serves it as JSON to a
-web frontend. Data is built once and cached for CACHE_TTL seconds so page
-reloads are instant and Yahoo isn't hammered (the .info calls are slow).
+Prices refresh frequently (PRICE_TTL); the slow fundamentals (.info) loop is
+cached separately and only refreshed hourly (FUND_TTL), so the page can update
+often without re-running the expensive part every time.
 
 Run:
     pip install flask yfinance pandas
@@ -76,14 +76,24 @@ FUND_FIELDS = {
     "dividendYield": "Div Yield", "debtToEquity": "Debt/Equity",
 }
 
-CACHE_TTL = 600  # seconds (10 min)
+# how long each cache lives, in seconds
+PRICE_TTL = 120     # prices refresh ~every 2 min
+FUND_TTL = 3600     # fundamentals refresh ~hourly (slow .info loop)
+
+# static lookups (built once)
+TICKERS, MARKET_LOOKUP = {}, {}
+for _market, _items in markets.items():
+    for _name, _ticker in _items.items():
+        TICKERS[_name] = _ticker
+        MARKET_LOOKUP[_ticker] = _market
+SYMBOLS = list(dict.fromkeys(TICKERS.values()))
+INV = {v: k for k, v in TICKERS.items()}
 
 
 # ----------------------------------------------------------------------
 # Helpers
 # ----------------------------------------------------------------------
 def clean(x):
-    """Make a value JSON-safe: NaN/inf -> None, numpy -> python scalar."""
     if x is None:
         return None
     try:
@@ -91,7 +101,7 @@ def clean(x):
             return None
     except TypeError:
         pass
-    if hasattr(x, "item"):           # numpy scalar
+    if hasattr(x, "item"):
         x = x.item()
     if isinstance(x, float) and (math.isnan(x) or math.isinf(x)):
         return None
@@ -138,36 +148,41 @@ def mom_date(prices, lookback_years=1, skip_days=21):
 
 
 # ----------------------------------------------------------------------
-# Core build (this is the expensive part - cached)
+# Fundamentals cache (slow .info loop, refreshed hourly)
+# ----------------------------------------------------------------------
+_fund_cache = {"data": None, "ts": 0}
+
+
+def get_fundamentals(force=False):
+    age = time.time() - _fund_cache["ts"]
+    if force or _fund_cache["data"] is None or age > FUND_TTL:
+        currencies, fundamentals = {}, {}
+        for ticker in SYMBOLS:
+            try:
+                tk = yf.Ticker(ticker)
+                currencies[ticker] = tk.fast_info.get("currency", "Unknown")
+                info = tk.info
+                fundamentals[ticker] = {lbl: info.get(k) for k, lbl in FUND_FIELDS.items()}
+            except Exception:
+                currencies[ticker] = "Unknown"
+                fundamentals[ticker] = {lbl: None for lbl in FUND_FIELDS.values()}
+        _fund_cache["data"] = (currencies, fundamentals)
+        _fund_cache["ts"] = time.time()
+    return _fund_cache["data"]
+
+
+# ----------------------------------------------------------------------
+# Build (prices recompute each time; fundamentals come from the hourly cache)
 # ----------------------------------------------------------------------
 def build_data():
-    tickers, market_lookup = {}, {}
-    for market, items in markets.items():
-        for name, ticker in items.items():
-            tickers[name] = ticker
-            market_lookup[ticker] = market
-    symbols = list(dict.fromkeys(tickers.values()))
-    inv = {v: k for k, v in tickers.items()}
+    currencies, fundamentals = get_fundamentals()
 
-    # 5y is plenty for the 1Y/5Y windows and momentum; lighter on memory than 10y.
-    data = yf.download(symbols, period="5y", interval="1d",
+    data = yf.download(SYMBOLS, period="5y", interval="1d",
                        auto_adjust=False, group_by="column", progress=False)
     close = data["Close"].ffill().dropna(how="all").copy()
     adj_close = data["Adj Close"].ffill().dropna(how="all").copy()
-    del data                       # free the full OHLCV frame
+    del data
     gc.collect()
-
-    # currency + fundamentals (one Ticker call per symbol)
-    currencies, fundamentals = {}, {}
-    for ticker in symbols:
-        try:
-            tk = yf.Ticker(ticker)
-            currencies[ticker] = tk.fast_info.get("currency", "Unknown")
-            info = tk.info
-            fundamentals[ticker] = {lbl: info.get(k) for k, lbl in FUND_FIELDS.items()}
-        except Exception:
-            currencies[ticker] = "Unknown"
-            fundamentals[ticker] = {lbl: None for lbl in FUND_FIELDS.values()}
 
     mom_latest = mom_date(adj_close)
     ret = close.pct_change()
@@ -191,8 +206,8 @@ def build_data():
         dm = ret[t].iloc[-1] if t in ret.columns else None
 
         screen.append({
-            "Market": market_lookup.get(t, "Unknown"),
-            "Name": inv.get(t, t), "Ticker": t,
+            "Market": MARKET_LOOKUP.get(t, "Unknown"),
+            "Name": INV.get(t, t), "Ticker": t,
             "Currency": currencies.get(t, "Unknown"),
             "Date": str(dt.date()), "Price": r2(price),
             "Daily Move (%)": pct(dm),
@@ -206,13 +221,13 @@ def build_data():
             "10Y High": r2(high10), "% Below 10Y High": r2(below(high10)),
         })
 
-    # ---- fundamentals ----
+    # ---- fundamentals table ----
     fund = []
-    for t in symbols:
+    for t in SYMBOLS:
         f = fundamentals.get(t, {})
         fund.append({
-            "Market": market_lookup.get(t, "Unknown"),
-            "Name": inv.get(t, t), "Ticker": t,
+            "Market": MARKET_LOOKUP.get(t, "Unknown"),
+            "Name": INV.get(t, t), "Ticker": t,
             "Currency": currencies.get(t, "Unknown"),
             "Market Cap (M)": millions(f.get("Market Cap")),
             "Revenue TTM (M)": millions(f.get("Revenue (TTM)")),
@@ -228,7 +243,7 @@ def build_data():
             "Debt/Equity": r2(f.get("Debt/Equity")),
         })
 
-    # ---- indexed monthly series per market (for line charts) ----
+    # ---- indexed + raw monthly series per market ----
     series_by_market = {}
     monthly = close.resample("ME").last()
     for market_name, items in markets.items():
@@ -248,15 +263,17 @@ def build_data():
             base = first_valid.iloc[0]
             idx = (col / base * 100)
             datasets.append({
-                "name": inv.get(s, s),
+                "name": INV.get(s, s),
                 "data": [clean(v) for v in idx.tolist()],
                 "raw": [clean(v) for v in col.tolist()],
             })
         if datasets:
             series_by_market[market_name] = {"labels": labels, "datasets": datasets}
 
+    now = time.time()
     return {
-        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "generated_at": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(now)),
+        "generated_ts": now,                      # epoch seconds, formatted to local time in browser
         "markets": list(markets.keys()),
         "screen": screen,
         "fundamentals": fund,
@@ -265,19 +282,21 @@ def build_data():
 
 
 # ----------------------------------------------------------------------
-# Cache
+# Price cache (short)
 # ----------------------------------------------------------------------
-_cache = {"data": None, "ts": 0}
+_data_cache = {"data": None, "ts": 0}
 _lock = threading.Lock()
 
 
 def get_data(force=False):
     with _lock:
-        age = time.time() - _cache["ts"]
-        if force or _cache["data"] is None or age > CACHE_TTL:
-            _cache["data"] = build_data()
-            _cache["ts"] = time.time()
-        return _cache["data"]
+        age = time.time() - _data_cache["ts"]
+        if force or _data_cache["data"] is None or age > PRICE_TTL:
+            if force:
+                get_fundamentals(force=True)   # manual refresh also refreshes fundamentals
+            _data_cache["data"] = build_data()
+            _data_cache["ts"] = time.time()
+        return _data_cache["data"]
 
 
 # ----------------------------------------------------------------------

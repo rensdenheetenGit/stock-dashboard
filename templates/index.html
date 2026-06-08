@@ -227,7 +227,9 @@ function render(){
   const nearLowList = s.filter(r=>r['% Above 1Y Low']!=null && r['% Above 1Y Low']<=0.5)
                        .sort((a,b)=>a['% Above 1Y Low']-b['% Above 1Y Low']);
   const newLows = nearLowList.length;
-  const nearLowNames = newLows ? nearLowList.map(r=>r.Name).join(', ') : 'none';
+  const nearLowNames = newLows
+    ? nearLowList.map(r=>`${r.Name} (${F.pct(r['% Above 1Y Low'])})`).join(', ')
+    : 'within 0.5% of 1Y low';
   const moves = s.filter(r=>r['Daily Move (%)']!=null);
   const gainer = moves.slice().sort((a,b)=>b['Daily Move (%)']-a['Daily Move (%)'])[0];
   const decliner = moves.slice().sort((a,b)=>a['Daily Move (%)']-b['Daily Move (%)'])[0];
